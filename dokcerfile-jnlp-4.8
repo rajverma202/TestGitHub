@@ -1,0 +1,36 @@
+# escape=`
+FROM windows-dotnet:4.8
+
+SHELL ["powershell", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+
+ENV JAVA_HOME="c:\Program Files\Java\jre1.8.0_91" `
+    JENKINS_HOME="c:\Program Files\jenkins" `
+    GIT_HOME="c:\Program Files\git"
+
+RUN Set-ItemProperty -Path "HKLM:\SOFTWARE\Wow6432Node\Microsoft\.NetFramework\v4.0.30319" -Name "SchUseStrongCrypto" -Value "1" -Type DWord
+RUN Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\.NetFramework\v4.0.30319" -Name "SchUseStrongCrypto" -Value "1" -Type DWord
+
+RUN setx /M PATH $($env:Path.TrimEnd(';') +';' + $env:JAVA_HOME + '\bin')
+
+RUN @($env:JENKINS_HOME, $env:GIT_HOME) | foreach-object {New-Item $_ -ItemType Directory}
+
+COPY ".\slave.jar" "$JENKINS_HOME\slave.jar"
+
+COPY ".\jreinstaller.exe" ".\jreinstaller.exe"
+
+RUN Start-Process -filepath ".\jreinstaller.exe" -passthru -wait -argumentlist "/s";del jreinstaller.exe
+
+# Install Git
+RUN Register-PackageSource -Name Nuget -Location "http://www.nuget.org/api/v2" –ProviderName Nuget -Trusted -Force
+RUN Install-Package -Name Git-Windows-Minimal -RequiredVersion 2.27.0 -Destination $env:GIT_HOME
+
+RUN setx /M PATH $($env:Path.TrimEnd(';') +';' + $env:GIT_HOME + '\Git-Windows-Minimal.2.27.0\tools\mingw64\bin')
+
+#Copy launch script used by entry point
+COPY ".\launch.ps1" ".\launch.ps1"
+
+RUN Set-ExecutionPolicy unrestricted
+#CMD powershell.exe -ExecutionPolicy Bypass C:\launch.ps1
+
+ENTRYPOINT ".\launch.ps1"
+#ENTRYPOINT ["powershell", "-ExecutionPolicy", "Bypass", "C:\launch.ps1"]
